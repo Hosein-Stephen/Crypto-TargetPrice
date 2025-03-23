@@ -21,16 +21,16 @@ async function getCryptoPrice(symbol, retries = 3) {
       return parseFloat(response.data.price);
     } catch (error) {
       console.error(`Error fetching crypto price for ${symbol}:`, error);
-  
+
       if (retries > 0) {
         console.log(`Retrying... (${3 - retries + 1}/3)`);
         return getCryptoPrice(symbol, retries - 1);  // Retry the request
       }
-  
+
       return null;  // Return null if it fails after retries
     }
-  }
-  
+}
+
 // Function to create the embed with crypto prices
 async function createEmbed() {
   const btcPrice = await getCryptoPrice('BTCUSDT');
@@ -58,7 +58,7 @@ client.once('ready', async () => {
   console.log('Bot is online!');
 
   // Send the initial embed message to the specific channel
-  const channel = await client.channels.fetch('1336353731272376322');
+  const channel = await client.channels.fetch('1351513736690794507');
   const embed = await createEmbed();
 
   // Original button to get the crypto price
@@ -82,7 +82,7 @@ client.once('ready', async () => {
   setInterval(async () => {
     const updatedEmbed = await createEmbed();
     await sentMessage.edit({ embeds: [updatedEmbed] });
-  }, 1000);  // Update every 10 seconds
+  }, 10000);  // Update every 10 seconds
 
   // Listen for button interactions after message is sent
   client.on('interactionCreate', async (interaction) => {
@@ -130,12 +130,19 @@ client.once('ready', async () => {
                         .setLabel('Add a Note (Optional)')
                         .setStyle(TextInputStyle.Paragraph)
                         .setRequired(false)  // Optional input
+                ),
+                new ActionRowBuilder().addComponents(
+                    new TextInputBuilder()
+                        .setCustomId('target_type')
+                        .setLabel('Target Type (Long/Short)')
+                        .setStyle(TextInputStyle.Short)
+                        .setRequired(true)
+                        .setPlaceholder('Long or Short')
                 )
             );
     
         await interaction.showModal(modal);
-    
-          }
+      }
     }
   });
 });
@@ -156,36 +163,46 @@ client.on('interactionCreate', async (interaction) => {
     }
   }
 
-// Inside interactionCreate event (target_price_modal handling)
-if (interaction.customId === 'target_price_modal') {
-  const symbol = interaction.fields.getTextInputValue('crypto_symbol').toUpperCase();
-  const targetPrice = parseFloat(interaction.fields.getTextInputValue('target_price'));
-  const note = interaction.fields.getTextInputValue('note') || 'No note provided';
-  const user = interaction.user; // Store user info before interaction expires
+  // Handle target price modal submission
+  if (interaction.customId === 'target_price_modal') {
+    const symbol = interaction.fields.getTextInputValue('crypto_symbol').toUpperCase();
+    const targetPrice = parseFloat(interaction.fields.getTextInputValue('target_price'));
+    const note = interaction.fields.getTextInputValue('note') || 'No note provided';
+    const targetType = interaction.fields.getTextInputValue('target_type').toLowerCase(); // Long or short target
+    const user = interaction.user; // Store user info before interaction expires
 
-  // Function to check price and send DM
-  const checkPriceAndNotify = async () => {
+    // Function to check price and send DM based on target type (long or short)
+    const checkPriceAndNotify = async () => {
       const currentPrice = await getCryptoPrice(symbol);
 
       if (currentPrice === null) return;
 
-      if (currentPrice >= targetPrice) {  // Notify only if price reaches or exceeds target
+      if (targetType === 'long' && currentPrice >= targetPrice) { // For long target, price should go higher
         clearInterval(priceCheckInterval);  // Stop checking once the target is hit
-    
+
         try {
-            await user.send(`📢 **Target Price Alert!**\n\nThe price of ${symbol} has reached **$${currentPrice.toFixed(2)}**!\n\n📝 **Note:** ${note}`);
+          await user.send(`📢 **Target Price Alert!**\n\nThe price of ${symbol} has reached **$${currentPrice.toFixed(2)}** (Target: Long).\n\n📝 **Note:** ${note}`);
         } catch (error) {
-            console.error(`Failed to send DM to ${user.tag}:`, error);
+          console.error(`Failed to send DM to ${user.tag}:`, error);
         }
-    }
-      };
+      }
 
-  const priceCheckInterval = setInterval(checkPriceAndNotify, 5000);
+      if (targetType === 'short' && currentPrice <= targetPrice) { // For short target, price should go lower
+        clearInterval(priceCheckInterval);  // Stop checking once the target is hit
 
-  await interaction.reply({ content: 'I will notify you when the target price is hit.', ephemeral: true });
-}
+        try {
+          await user.send(`📢 **Target Price Alert!**\n\nThe price of ${symbol} has dropped to **$${currentPrice.toFixed(2)}** (Target: Short).\n\n📝 **Note:** ${note}`);
+        } catch (error) {
+          console.error(`Failed to send DM to ${user.tag}:`, error);
+        }
+      }
+    };
 
-      });
+    const priceCheckInterval = setInterval(checkPriceAndNotify, 5000);
+
+    await interaction.reply({ content: 'I will notify you when the target price is hit.', ephemeral: true });
+  }
+});
 
 // Log in to Discord with your app's token
 client.login(token);
